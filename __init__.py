@@ -295,7 +295,6 @@ def export_jwm():
     obj = {
         "Ident": "JWM",
         "Sectors": [],
-        "AccessPool": [],
         "NeighborPool": [],
     }
 
@@ -328,7 +327,6 @@ def export_jwm():
                             
     for i in range(len(obj["Sectors"])):
         neighbors = [-1,-1,-1]
-        access = [i]
         
         for j in range(3):
             p1 = obj["Sectors"][i][j]
@@ -347,12 +345,8 @@ def export_jwm():
                     
                     if neighbor_test1 or neighbor_test2:
                         neighbors[j] = k
-                    
-                    if p1 == p1prime and not k in access:
-                        access.append(k)
             
         obj["NeighborPool"].append(neighbors)
-        obj["AccessPool"].append(access)
 
     return obj
 
