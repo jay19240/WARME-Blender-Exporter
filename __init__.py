@@ -1,10 +1,10 @@
 bl_info = {
-    "name": "JSM/JAM Exporter",
+    "name": "Haiku Exporter",
     "author": "matidfk#2272",
     "version": (0, 1, 5),
     "blender": (3, 1, 2),
-    "location": "View3D > Properties > JSM/JAM Export",
-    "description": "Export to a custom JSM/JAM format",
+    "location": "View3D > Properties > Haiku Export",
+    "description": "Export to a custom haiku format",
     "category": "Import-Export"
 }
 
@@ -98,10 +98,10 @@ class JSMJAMEXPORT_OT_export_jwm(bpy.types.Operator):
 # UI
 class JSMJAMEXPORT_PT_options(bpy.types.Panel):
     bl_idname = "JSMJAMEXPORT_PT_options"
-    bl_label = "JSM/JAM Export"
+    bl_label = "Haiku Exporter"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "JSM/JAM Export"
+    bl_category = "Haiku Exporter"
     bl_context = "objectmode"
     
     def draw(self, context):
@@ -134,7 +134,6 @@ class JSMJAMEXPORT_PT_options(bpy.types.Panel):
 
 # Add an animation data block operator
 class JSMJAMEXPORT_OT_add_animation(bpy.types.Operator):
-    
     """Add animation""" 
     bl_idname = "object.add_animation"
     bl_label = "Add an animation to the current objects list"
@@ -150,7 +149,6 @@ class JSMJAMEXPORT_OT_add_animation(bpy.types.Operator):
 
 # Remove an animation data block operator
 class JSMJAMEXPORT_OT_remove_animation(bpy.types.Operator):
-    
     """Remove last animation""" 
     bl_idname = "object.remove_animation"
     bl_label = "Remove last animation from the current objects list"
@@ -163,7 +161,6 @@ class JSMJAMEXPORT_OT_remove_animation(bpy.types.Operator):
 
 # JSM exporter function
 def export_jsm():
-    
     # Setup object structure
     obj = {
         "Ident": "JSM",
@@ -207,14 +204,11 @@ def export_jsm():
             obj["TextureCoords"].append(1 - round(mesh.uv_layers.active.data[li].uv[1], 4))
                 
     obj["NumVertices"] = int(len(obj["Vertices"]) / 3)
-                
     return obj
-
 
 
 # JAM exporter function
 def export_jam():
-    
     # Setup object structure
     obj = {
         "Ident": "JAM",
@@ -234,7 +228,6 @@ def export_jam():
 
     # For each frame
     while bpy.context.scene.frame_current <= bpy.context.scene.frame_end:
-        
         # Get current mesh data
         dg.update()
         obj_eval = selected_obj.evaluated_get(dg)
@@ -244,7 +237,6 @@ def export_jam():
         mesh.transform(bpy.context.object.matrix_world)
         mesh.transform(mathutils.Matrix.Rotation(pi/2, 4, 'X')) 
         mesh.transform(mathutils.Matrix.Rotation(pi, 4, 'Z')) 
-        
         
         vertices = []
         normals = [] 
@@ -263,11 +255,8 @@ def export_jam():
                     
         # Append to obj
         obj["Frames"].append({"Vertices": vertices, "Normals": normals})
-        
         obj["NumVertices"] = int(len(obj["Frames"][0]["Vertices"]) / 3)
-    
         bpy.context.scene.frame_current += 1
-        
         
     depsgraph = bpy.context.evaluated_depsgraph_get()
     depsgraph.update()
@@ -286,7 +275,6 @@ def export_jam():
                                   "StartFrame": anim.start_frame, 
                                   "EndFrame": anim.end_frame,
                                   "FrameDuration": anim.frame_duration})
-    
     return obj
 
 
@@ -296,6 +284,7 @@ def export_jwm():
         "Ident": "JWM",
         "Sectors": [],
         "NeighborPool": [],
+        "SharedPool": []
     }
 
     # Fetch selected object
@@ -320,13 +309,14 @@ def export_jwm():
                 trii.append(round(mesh.vertices[mesh.loops[li].vertex_index].co[j], 4))
             sector.append(trii)
         obj["Sectors"].append(sector)
-        
+
     # Theres probably a better way to do this
     # access pool is shared vertices
     # neighbor pool is shared edges
                             
     for i in range(len(obj["Sectors"])):
         neighbors = [-1,-1,-1]
+        shared = [i]
         
         for j in range(3):
             p1 = obj["Sectors"][i][j]
@@ -346,9 +336,14 @@ def export_jwm():
                     if neighbor_test1 or neighbor_test2:
                         neighbors[j] = k
             
+                    if p1 == p1prime and not k in shared:
+                        shared.append(k)
+
         obj["NeighborPool"].append(neighbors)
+        obj["SharedPool"].append(shared)
 
     return obj
+
 
 # Save to file
 def save_file(obj, path, filename, extension):
@@ -363,16 +358,14 @@ def save_file(obj, path, filename, extension):
         i += 1
     with open(file, 'w', encoding='utf-8') as f:
         json.dump(obj, f, ensure_ascii=False)
-    
-    
-    
+
+
 # Blender class to allow saving jam_animations to objects as a data block
 class JamAnimation(bpy.types.PropertyGroup):
     name: bpy.props.StringProperty(name="Name")
     start_frame: bpy.props.IntProperty(name="Start frame")
     end_frame: bpy.props.IntProperty(name="End frame")
     frame_duration: bpy.props.IntProperty(name="Frame Duration")
-
 
 
 # Blender stuff
@@ -388,7 +381,8 @@ def register():
     
     bpy.utils.register_class(JamAnimation)
     bpy.types.Object.jam_animations = bpy.props.CollectionProperty(type=JamAnimation)
-    
+
+
 def unregister():
     bpy.utils.unregister_class(JSMJAMEXPORT_OT_export_jwm)
     bpy.utils.unregister_class(JSMJAMEXPORT_OT_export_jsm)
