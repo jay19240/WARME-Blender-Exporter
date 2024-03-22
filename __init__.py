@@ -1,19 +1,67 @@
 bl_info = {
-    "name": "Haiku Exporter",
+    "name": "WARME Engine Exporter",
     "author": "matidfk#2272",
     "version": (0, 1, 5),
     "blender": (3, 1, 2),
-    "location": "View3D > Properties > Haiku Export",
-    "description": "Export to a custom haiku format",
+    "location": "View3D > Properties > WARME Engine Export",
+    "description": "Export to a custom warme-engine format",
     "category": "Import-Export"
 }
 
 # Imports
 import bpy
+import subprocess
 import json
 import mathutils
 from math import pi
 from pathlib import Path
+
+# Copy camera matrix process operator
+class JSMJAMEXPORT_OT_copy_camera_matrix(bpy.types.Operator):
+    """Copy camera matrix""" 
+    bl_idname = "object.copy_camera_matrix"
+    bl_label = "Copy camera matrix to clipboard"
+    bl_options = {'REGISTER', 'UNDO_GROUPED'}
+
+    def execute(self, context):
+        cam = bpy.data.objects['Camera']
+        matrix = cam.matrix_world.to_4x4().transposed()
+        tmp = matrix[0][1]; matrix[0][1] = matrix[0][2]; matrix[0][2] = tmp;
+        tmp = matrix[1][1]; matrix[1][1] = matrix[1][2]; matrix[1][2] = tmp;
+        tmp = matrix[2][1]; matrix[2][1] = matrix[2][2]; matrix[2][2] = tmp;
+        tmp = matrix[3][1]; matrix[3][1] = matrix[3][2]; matrix[3][2] = tmp;
+        matrix[0][0] = matrix[0][0] * -1;
+        matrix[1][0] = matrix[1][0] * -1;
+        matrix[2][0] = matrix[2][0] * -1;
+        matrix[3][0] = matrix[3][0] * -1;
+        copy2clip(f"{matrix[0][0]}, {matrix[0][1]}, {matrix[0][2]}, {matrix[0][3]}, {matrix[1][0]}, {matrix[1][1]}, {matrix[1][2]}, {matrix[1][3]}, {matrix[2][0]}, {matrix[2][1]}, {matrix[2][2]}, {matrix[2][3]}, {matrix[3][0]}, {matrix[3][1]}, {matrix[3][2]}, {matrix[3][3]}");
+        return {"FINISHED"}
+
+# Copy object position process operator
+class JSMJAMEXPORT_OT_copy_object_position(bpy.types.Operator):
+    """Copy object position""" 
+    bl_idname = "object.copy_object_position"
+    bl_label = "Copy object position to clipboard"
+    bl_options = {'REGISTER', 'UNDO_GROUPED'}
+
+    def execute(self, context):
+        # Fetch selected object
+        pos = bpy.context.object.matrix_world.to_translation();
+        copy2clip(f"{-pos.x}, {pos.z}, {pos.y}"); # converter x => -x; y => +z; z => +y;
+        return {"FINISHED"}
+
+# Copy object rotation process operator
+class JSMJAMEXPORT_OT_copy_object_rotation(bpy.types.Operator):
+    """Copy object rotation""" 
+    bl_idname = "object.copy_object_rotation"
+    bl_label = "Copy object rotation to clipboard"
+    bl_options = {'REGISTER', 'UNDO_GROUPED'}
+
+    def execute(self, context):
+        # Fetch selected object
+        rot = bpy.context.object.matrix_world.to_euler('YXZ');
+        copy2clip(f"{rot.x}, {-rot.z}, {rot.y}");
+        return {"FINISHED"}
 
 # JAM export operator
 class JSMJAMEXPORT_OT_export_jam(bpy.types.Operator):
@@ -28,39 +76,6 @@ class JSMJAMEXPORT_OT_export_jam(bpy.types.Operator):
             save_file(data, bpy.path.abspath(context.scene.render.filepath), context.object.name, "jam")
         else:
             self.report({'ERROR'}, "Object is not triangulated")
-        return {"FINISHED"}
-
-# MD2 process operator
-class JSMJAMEXPORT_OT_process_md2(bpy.types.Operator):
-    """Process md2 model""" 
-    bl_idname = "object.process_md2"
-    bl_label = "Process md2 model"
-    bl_options = {'REGISTER', 'UNDO_GROUPED'}
-
-    def execute(self, context):
-        bpy.context.scene.frame_start = 0
-        obj = bpy.context.object
-        bpy.context.scene.frame_end = len(obj.data.shape_keys.key_blocks) - 1
-        print(bpy.context.scene.frame_end)
-        obj.data.use_auto_smooth = 0
-        obj.data.shape_keys.use_relative = False
-        driver = obj.data.shape_keys.driver_add("eval_time")
-        driver.driver.expression = "(frame) * 10"
-        
-        prev_anim_name = ""
-        for frm, sk in enumerate(obj.data.shape_keys.key_blocks):
-            anim_name = sk.name[:-3]
-            if anim_name != prev_anim_name:
-                if len(context.object.jam_animations) > 0:
-                    context.object.jam_animations[-1].end_frame = frm
-                anim = context.object.jam_animations.add()
-                anim.frame_duration = 100
-                anim.name = anim_name
-                anim.start_frame = frm
-                prev_anim_name = anim_name
-        
-        context.object.jam_animations[-1].end_frame = len(obj.data.shape_keys.key_blocks) - 1
-        
         return {"FINISHED"}
 
 # JSM export operator
@@ -98,10 +113,10 @@ class JSMJAMEXPORT_OT_export_jwm(bpy.types.Operator):
 # UI
 class JSMJAMEXPORT_PT_options(bpy.types.Panel):
     bl_idname = "JSMJAMEXPORT_PT_options"
-    bl_label = "Haiku Exporter"
+    bl_label = "WARME Engine Exporter"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "Haiku Exporter"
+    bl_category = "WARME Engine Exporter"
     bl_context = "objectmode"
     
     def draw(self, context):
@@ -129,7 +144,9 @@ class JSMJAMEXPORT_PT_options(bpy.types.Panel):
         
         layout.operator("object.add_animation")
         layout.operator("object.remove_animation")
-        layout.operator("object.process_md2")
+        layout.operator("object.copy_camera_matrix")
+        layout.operator("object.copy_object_position")
+        layout.operator("object.copy_object_rotation")
 
 
 # Add an animation data block operator
@@ -359,6 +376,9 @@ def save_file(obj, path, filename, extension):
     with open(file, 'w', encoding='utf-8') as f:
         json.dump(obj, f, ensure_ascii=False)
 
+def copy2clip(txt):
+    cmd='echo '+txt.strip()+'|clip'
+    return subprocess.check_call(cmd, shell=True)
 
 # Blender class to allow saving jam_animations to objects as a data block
 class JamAnimation(bpy.types.PropertyGroup):
@@ -373,12 +393,12 @@ def register():
     bpy.utils.register_class(JSMJAMEXPORT_OT_export_jwm)
     bpy.utils.register_class(JSMJAMEXPORT_OT_export_jsm)
     bpy.utils.register_class(JSMJAMEXPORT_OT_export_jam)
-    bpy.utils.register_class(JSMJAMEXPORT_OT_process_md2)
+    bpy.utils.register_class(JSMJAMEXPORT_OT_copy_camera_matrix)
+    bpy.utils.register_class(JSMJAMEXPORT_OT_copy_object_position) 
+    bpy.utils.register_class(JSMJAMEXPORT_OT_copy_object_rotation)
     bpy.utils.register_class(JSMJAMEXPORT_PT_options)
-    
     bpy.utils.register_class(JSMJAMEXPORT_OT_add_animation)
-    bpy.utils.register_class(JSMJAMEXPORT_OT_remove_animation)
-    
+    bpy.utils.register_class(JSMJAMEXPORT_OT_remove_animation)    
     bpy.utils.register_class(JamAnimation)
     bpy.types.Object.jam_animations = bpy.props.CollectionProperty(type=JamAnimation)
 
@@ -387,9 +407,10 @@ def unregister():
     bpy.utils.unregister_class(JSMJAMEXPORT_OT_export_jwm)
     bpy.utils.unregister_class(JSMJAMEXPORT_OT_export_jsm)
     bpy.utils.unregister_class(JSMJAMEXPORT_OT_export_jam)
-    bpy.utils.unregister_class(JSMJAMEXPORT_OT_process_md2)
+    bpy.utils.unregister_class(JSMJAMEXPORT_OT_copy_camera_matrix)   
+    bpy.utils.unregister_class(JSMJAMEXPORT_OT_copy_object_position)
+    bpy.utils.unregister_class(JSMJAMEXPORT_OT_copy_object_rotation)
     bpy.utils.unregister_class(JSMJAMEXPORT_PT_options)
-    
     bpy.utils.unregister_class(JSMJAMEXPORT_OT_add_animation)
     bpy.utils.unregister_class(JSMJAMEXPORT_OT_remove_animation)
     bpy.utils.unregister_class(JamAnimation)
